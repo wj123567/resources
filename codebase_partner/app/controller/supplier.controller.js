@@ -13,6 +13,14 @@ const uploadBufferToS3 = async (buffer, mimeType) => {
     if (!buffer) return null;
     const bucket = process.env.S3_BUCKET;
     if (!bucket) throw new Error('S3_BUCKET env var is required');
+    
+    console.log('S3 Upload Debug Info:');
+    console.log('- Bucket:', bucket);
+    console.log('- Region:', process.env.AWS_REGION || 'us-east-1');
+    console.log('- Buffer size:', buffer.length);
+    console.log('- MIME type:', mimeType);
+    console.log('- AWS credentials available:', !!process.env.AWS_ACCESS_KEY_ID);
+    
     const key = `suppliers/${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     const params = {
         Bucket: bucket,
@@ -21,8 +29,19 @@ const uploadBufferToS3 = async (buffer, mimeType) => {
         ContentType: mimeType,
         ACL: 'public-read'
     };
-    const out = await s3.upload(params).promise();
-    return out.Location; // public URL
+    
+    try {
+        const out = await s3.upload(params).promise();
+        console.log('S3 upload successful:', out.Location);
+        return out.Location; // public URL
+    } catch (error) {
+        console.error('S3 upload error details:');
+        console.error('- Error code:', error.code);
+        console.error('- Error message:', error.message);
+        console.error('- Error statusCode:', error.statusCode);
+        console.error('- Error requestId:', error.requestId);
+        throw error;
+    }
 };
 
 

@@ -55,6 +55,52 @@ app.get("/supplier-update/:id", supplier.findOne);
 app.post("/supplier-update", upload.single('photo'), supplier.update);
 // receive the POST to delete a supplier
 app.post("/supplier-remove/:id", supplier.remove);
+
+// Test S3 connectivity
+app.get("/test-s3", async (req, res) => {
+    try {
+        const AWS = require('aws-sdk');
+        const s3 = new AWS.S3({
+            apiVersion: '2006-03-01',
+            region: process.env.AWS_REGION || 'us-east-1'
+        });
+        
+        console.log('Testing S3 connection...');
+        console.log('Region:', process.env.AWS_REGION || 'us-east-1');
+        console.log('Bucket:', process.env.S3_BUCKET);
+        console.log('AWS credentials available:', !!process.env.AWS_ACCESS_KEY_ID);
+        
+        if (!process.env.S3_BUCKET) {
+            return res.json({ error: 'S3_BUCKET environment variable not set' });
+        }
+        
+        // Try to list objects in the bucket
+        const result = await s3.listObjectsV2({
+            Bucket: process.env.S3_BUCKET,
+            MaxKeys: 1
+        }).promise();
+        
+        res.json({ 
+            success: true, 
+            message: 'S3 connection successful',
+            bucket: process.env.S3_BUCKET,
+            region: process.env.AWS_REGION || 'us-east-1',
+            objectsCount: result.Contents ? result.Contents.length : 0
+        });
+        
+    } catch (error) {
+        console.error('S3 test failed:', error);
+        res.json({ 
+            error: 'S3 connection failed', 
+            details: {
+                code: error.code,
+                message: error.message,
+                statusCode: error.statusCode
+            }
+        });
+    }
+});
+
 // handle 404
 app.use(function (req, res, next) {
     res.status(404).render("404", {});
