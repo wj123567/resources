@@ -14,12 +14,17 @@ const uploadBufferToS3 = async (buffer, mimeType) => {
     const bucket = process.env.S3_BUCKET;
     if (!bucket) throw new Error('S3_BUCKET env var is required');
     
-    console.log('S3 Upload Debug Info:');
-    console.log('- Bucket:', bucket);
-    console.log('- Region:', process.env.AWS_REGION || 'us-east-1');
-    console.log('- Buffer size:', buffer.length);
-    console.log('- MIME type:', mimeType);
-    console.log('- AWS credentials available:', !!process.env.AWS_ACCESS_KEY_ID);
+    // Create debug info object to send to browser
+    const debugInfo = {
+        bucket: bucket,
+        region: process.env.AWS_REGION || 'us-east-1',
+        bufferSize: buffer.length,
+        mimeType: mimeType,
+        hasCredentials: !!process.env.AWS_ACCESS_KEY_ID,
+        timestamp: new Date().toISOString()
+    };
+    
+    console.log('S3 Upload Debug Info:', debugInfo);
     
     const key = `suppliers/${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     const params = {
@@ -33,14 +38,17 @@ const uploadBufferToS3 = async (buffer, mimeType) => {
     try {
         const out = await s3.upload(params).promise();
         console.log('S3 upload successful:', out.Location);
-        return out.Location; // public URL
+        return { success: true, url: out.Location, debugInfo };
     } catch (error) {
-        console.error('S3 upload error details:');
-        console.error('- Error code:', error.code);
-        console.error('- Error message:', error.message);
-        console.error('- Error statusCode:', error.statusCode);
-        console.error('- Error requestId:', error.requestId);
-        throw error;
+        const errorDetails = {
+            code: error.code,
+            message: error.message,
+            statusCode: error.statusCode,
+            requestId: error.requestId,
+            debugInfo: debugInfo
+        };
+        console.error('S3 upload error details:', errorDetails);
+        throw { error: errorDetails };
     }
 };
 
@@ -77,10 +85,11 @@ exports.create = [
             (async () => {
                 if (maybeFile) {
                     try {
-                        supplier.photo_url = await uploadBufferToS3(maybeFile.buffer, maybeFile.mimetype);
+                        const uploadResult = await uploadBufferToS3(maybeFile.buffer, maybeFile.mimetype);
+                        supplier.photo_url = uploadResult.url;
                     } catch (e) {
                         console.error('S3 upload failed', e);
-                        return res.render("500", {message: `Image upload failed.`});
+                        return res.render("500", {message: `Image upload failed. Details: ${JSON.stringify(e.error)}`});
                     }
                 }
                 // ensure photo_url is persisted if not uploading
@@ -148,10 +157,11 @@ exports.update = [
             (async () => {
                 if (maybeFile) {
                     try {
-                        supplier.photo_url = await uploadBufferToS3(maybeFile.buffer, maybeFile.mimetype);
+                        const uploadResult = await uploadBufferToS3(maybeFile.buffer, maybeFile.mimetype);
+                        supplier.photo_url = uploadResult.url;
                     } catch (e) {
                         console.error('S3 upload failed', e);
-                        return res.render("500", {message: `Image upload failed.`});
+                        return res.render("500", {message: `Image upload failed. Details: ${JSON.stringify(e.error)}`});
                     }
                 }
                 if (!supplier.photo_url && req.body.photo_url) {

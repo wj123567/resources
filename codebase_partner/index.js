@@ -47,6 +47,12 @@ app.get("/students/", supplier.findAll);
 app.get("/supplier-add", (req, res) => {
     res.render("supplier-add", {});
 });
+
+// Debug console page
+app.get("/debug", (req, res) => {
+    res.render("debug", {});
+});
+
 // receive the add supplier POST
 app.post("/supplier-add", upload.single('photo'), supplier.create);
 // show the update form

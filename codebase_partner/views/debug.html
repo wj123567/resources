@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S3 Debug Console</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <style>
+        .log-entry { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .log-success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .log-error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .log-info { background-color: #d1ecf1; border: 1px solid #bee5eb; }
+        pre { background-color: #f8f9fa; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>🔍 S3 Debug Console</h1>
+        <p class="text-muted">This page will show S3 connection status and log debug information to the browser console.</p>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>📡 Test S3 Connection</h5>
+                    </div>
+                    <div class="card-body">
+                        <button id="testS3" class="btn btn-primary">Test S3 Connection</button>
+                        <div id="testResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>📋 Debug Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="debugInfo"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>📝 Log Entries</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="logEntries"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h5>📱 Browser Console</h5>
+            <p>Open your browser's Developer Tools (F12) and check the Console tab to see detailed debug logs.</p>
+            <button onclick="openConsole()" class="btn btn-secondary">Open Developer Tools</button>
+        </div>
+    </div>
+
+    <script src="/js/jquery-3.6.0.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script>
+        // Log function that adds entries to the page and console
+        function log(message, type = 'info', data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            
+            let content = `<strong>[${timestamp}]</strong> ${message}`;
+            if (data) {
+                content += `<pre class="mt-2">${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            logEntry.innerHTML = content;
+            document.getElementById('logEntries').prepend(logEntry);
+            
+            // Also log to browser console
+            if (type === 'error') {
+                console.error(`[${timestamp}] ${message}`, data);
+            } else if (type === 'success') {
+                console.log(`[${timestamp}] ${message}`, data);
+            } else {
+                console.info(`[${timestamp}] ${message}`, data);
+            }
+        }
+
+        // Test S3 connection
+        document.getElementById('testS3').addEventListener('click', async function() {
+            const button = this;
+            button.disabled = true;
+            button.textContent = 'Testing...';
+            
+            log('🔍 Testing S3 connection...', 'info');
+            
+            try {
+                const response = await fetch('/test-s3');
+                const data = await response.json();
+                
+                if (data.success) {
+                    log('✅ S3 connection successful!', 'success', data);
+                    document.getElementById('testResult').innerHTML = 
+                        '<div class="alert alert-success">S3 connection successful!</div>';
+                } else {
+                    log('❌ S3 connection failed', 'error', data);
+                    document.getElementById('testResult').innerHTML = 
+                        '<div class="alert alert-danger">S3 connection failed</div>';
+                }
+                
+                // Display debug info
+                if (data.debugInfo) {
+                    document.getElementById('debugInfo').innerHTML = 
+                        `<pre>${JSON.stringify(data.debugInfo, null, 2)}</pre>`;
+                }
+                
+            } catch (error) {
+                log('💥 Error testing S3 connection', 'error', error);
+                document.getElementById('testResult').innerHTML = 
+                    '<div class="alert alert-danger">Error testing connection</div>';
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Test S3 Connection';
+            }
+        });
+
+        // Open console instructions
+        function openConsole() {
+            log('📱 Opening Developer Tools...', 'info');
+            log('💡 Press F12 or right-click and select "Inspect"', 'info');
+            log('💡 Go to the Console tab to see detailed logs', 'info');
+        }
+
+        // Initial log
+        log('🚀 Debug console loaded', 'success');
+        log('📱 Open Developer Tools (F12) to see console logs', 'info');
+        
+        // Test S3 connection on page load
+        setTimeout(() => {
+            document.getElementById('testS3').click();
+        }, 1000);
+    </script>
+</body>
+</html>
