@@ -7,7 +7,14 @@ const s3 = new AWS.S3({
     region: process.env.AWS_REGION || 'us-east-1'
 });
 
-const bucket = process.env.S3_BUCKET;
+// Get bucket dynamically instead of at module load
+const getBucket = () => {
+    const bucket = process.env.S3_BUCKET;
+    if (!bucket) {
+        throw new Error('S3_BUCKET environment variable not set. Check if Secrets Manager has loaded properly.');
+    }
+    return bucket;
+};
 
 // Helper function to extract key from S3 URL
 const extractKeyFromUrl = (url) => {
@@ -25,7 +32,7 @@ const extractKeyFromUrl = (url) => {
 // CREATE: Upload new image
 const uploadImage = async (buffer, mimeType, supplierId = null) => {
     if (!buffer) return null;
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
+    const bucket = getBucket(); // ✅ Get bucket dynamically
     
     const debugInfo = {
         bucket: bucket,
@@ -62,10 +69,10 @@ const uploadImage = async (buffer, mimeType, supplierId = null) => {
         };
     } catch (error) {
         const errorDetails = {
-            code: error.code,
-            message: error.message,
-            statusCode: error.statusCode,
-            requestId: error.requestId,
+            code: error.code || 'UnknownError',
+            message: error.message || 'Unknown error occurred',
+            statusCode: error.statusCode || 'Unknown',
+            requestId: error.requestId || 'Unknown',
             debugInfo: debugInfo
         };
         console.error('S3 upload error details:', errorDetails);
@@ -75,7 +82,7 @@ const uploadImage = async (buffer, mimeType, supplierId = null) => {
 
 // READ: Get image from S3
 const getImage = async (key) => {
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
+    const bucket = getBucket(); // ✅ Get bucket dynamically
     
     try {
         const params = { Bucket: bucket, Key: key };
@@ -94,7 +101,7 @@ const getImage = async (key) => {
 
 // UPDATE: Replace existing image
 const updateImage = async (oldImageUrl, newBuffer, mimeType, supplierId) => {
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
+    const bucket = getBucket(); // ✅ Get bucket dynamically
     
     try {
         // Extract key from old image URL
@@ -102,8 +109,13 @@ const updateImage = async (oldImageUrl, newBuffer, mimeType, supplierId) => {
         
         // Delete old image if it exists
         if (oldKey) {
-            await deleteImage(oldKey);
-            console.log('Deleted old image:', oldKey);
+            try {
+                await deleteImage(oldKey);
+                console.log('Deleted old image:', oldKey);
+            } catch (deleteError) {
+                console.warn('Failed to delete old image, continuing with update:', deleteError);
+                // Continue with update even if deletion fails
+            }
         }
         
         // Upload new image
@@ -112,13 +124,24 @@ const updateImage = async (oldImageUrl, newBuffer, mimeType, supplierId) => {
         
     } catch (error) {
         console.error('S3 update image error:', error);
-        throw error;
+        // Ensure we return a proper error structure
+        if (error.error) {
+            throw error; // Already in correct format
+        } else {
+            throw { 
+                error: { 
+                    code: error.code || 'UpdateError',
+                    message: error.message || 'Image update failed',
+                    statusCode: error.statusCode || 'Unknown'
+                } 
+            };
+        }
     }
 };
 
 // DELETE: Remove image from S3
 const deleteImage = async (key) => {
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
+    const bucket = getBucket(); // ✅ Get bucket dynamically
     
     try {
         const params = { Bucket: bucket, Key: key };
@@ -133,7 +156,7 @@ const deleteImage = async (key) => {
 
 // LIST: Get all images for a supplier
 const listSupplierImages = async (supplierId) => {
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
+    const bucket = getBucket(); // ✅ Get bucket dynamically
     
     try {
         const params = { 
@@ -155,7 +178,7 @@ const listSupplierImages = async (supplierId) => {
 
 // Check if image exists
 const imageExists = async (key) => {
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
+    const bucket = getBucket(); // ✅ Get bucket dynamically
     
     try {
         const params = { Bucket: bucket, Key: key };
