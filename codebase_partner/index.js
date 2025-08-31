@@ -53,6 +53,11 @@ app.get("/debug", (req, res) => {
     res.render("debug", {});
 });
 
+// S3 CRUD test page
+app.get("/s3-test", (req, res) => {
+    res.render("s3-test", {});
+});
+
 // receive the add supplier POST
 app.post("/supplier-add", upload.single('photo'), supplier.create);
 // show the update form
@@ -61,6 +66,9 @@ app.get("/supplier-update/:id", supplier.findOne);
 app.post("/supplier-update", upload.single('photo'), supplier.update);
 // receive the POST to delete a supplier
 app.post("/supplier-remove/:id", supplier.remove);
+
+// Get all images for a supplier
+app.get("/supplier/:id/images", supplier.getSupplierImages);
 
 // Test S3 connectivity
 app.get("/test-s3", async (req, res) => {

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S3 CRUD Test</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <style>
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { margin: 10px 0; padding: 10px; background-color: #f8f9fa; border-radius: 3px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        pre { background-color: #f8f9fa; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>🔧 S3 CRUD Operations Test</h1>
+        <p class="text-muted">Test the new S3 image management functions</p>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="test-section">
+                    <h4>📤 Upload Test</h4>
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="imageFile" class="form-label">Select Image</label>
+                            <input type="file" class="form-control" id="imageFile" name="photo" accept="image/*" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Upload Image</button>
+                    </form>
+                    <div id="uploadResult" class="result"></div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="test-section">
+                    <h4>📋 S3 Connection Test</h4>
+                    <button id="testS3" class="btn btn-info">Test S3 Connection</button>
+                    <div id="testResult" class="result"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="test-section">
+                    <h4>🔍 List Supplier Images</h4>
+                    <div class="mb-3">
+                        <label for="supplierId" class="form-label">Supplier ID</label>
+                        <input type="number" class="form-control" id="supplierId" value="1" min="1">
+                    </div>
+                    <button id="listImages" class="btn btn-success">List Images</button>
+                    <div id="listResult" class="result"></div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="test-section">
+                    <h4>📊 Status</h4>
+                    <div id="statusInfo">
+                        <p><strong>Environment:</strong></p>
+                        <ul>
+                            <li>S3 Bucket: <span id="bucketStatus">Checking...</span></li>
+                            <li>AWS Region: <span id="regionStatus">Checking...</span></li>
+                            <li>Credentials: <span id="credStatus">Checking...</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="test-section">
+                    <h4>📝 Logs</h4>
+                    <div id="logs"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/jquery-3.6.0.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script>
+        // Log function
+        function log(message, type = 'info', data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `result ${type}`;
+            
+            let content = `<strong>[${timestamp}]</strong> ${message}`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            logEntry.innerHTML = content;
+            document.getElementById('logs').prepend(logEntry);
+            
+            // Also log to browser console
+            if (type === 'error') {
+                console.error(`[${timestamp}] ${message}`, data);
+            } else if (type === 'success') {
+                console.log(`[${timestamp}] ${message}`, data);
+            } else {
+                console.info(`[${timestamp}] ${message}`, data);
+            }
+        }
+
+        // Test S3 connection
+        document.getElementById('testS3').addEventListener('click', async function() {
+            const button = this;
+            button.disabled = true;
+            button.textContent = 'Testing...';
+            
+            log('🔍 Testing S3 connection...', 'info');
+            
+            try {
+                const response = await fetch('/test-s3');
+                const data = await response.json();
+                
+                if (data.success) {
+                    log('✅ S3 connection successful!', 'success', data);
+                    document.getElementById('testResult').innerHTML = 
+                        '<div class="alert alert-success">S3 connection successful!</div>';
+                    
+                    // Update status
+                    document.getElementById('bucketStatus').textContent = data.bucket || 'Unknown';
+                    document.getElementById('regionStatus').textContent = data.region || 'Unknown';
+                    document.getElementById('credStatus').textContent = 'Available';
+                } else {
+                    log('❌ S3 connection failed', 'error', data);
+                    document.getElementById('testResult').innerHTML = 
+                        '<div class="alert alert-danger">S3 connection failed</div>';
+                    
+                    // Update status
+                    document.getElementById('credStatus').textContent = 'Failed';
+                }
+                
+            } catch (error) {
+                log('💥 Error testing S3 connection', 'error', error);
+                document.getElementById('testResult').innerHTML = 
+                    '<div class="alert alert-danger">Error testing connection</div>';
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Test S3 Connection';
+            }
+        });
+
+        // Upload form
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const fileInput = document.getElementById('imageFile');
+            
+            if (fileInput.files.length === 0) {
+                log('❌ Please select a file', 'error');
+                return;
+            }
+            
+            formData.append('photo', fileInput.files[0]);
+            formData.append('name', 'Test Supplier');
+            formData.append('address', 'Test Address');
+            formData.append('city', 'Test City');
+            formData.append('state', 'TS');
+            formData.append('phone', '1234567890');
+            
+            log('📤 Uploading image...', 'info');
+            
+            try {
+                const response = await fetch('/supplier-add', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.redirected) {
+                    log('✅ Image upload successful! Redirecting...', 'success');
+                    document.getElementById('uploadResult').innerHTML = 
+                        '<div class="alert alert-success">Upload successful! Check supplier list.</div>';
+                } else {
+                    const data = await response.text();
+                    log('❌ Upload failed', 'error', data);
+                    document.getElementById('uploadResult').innerHTML = 
+                        '<div class="alert alert-danger">Upload failed</div>';
+                }
+                
+            } catch (error) {
+                log('💥 Upload error', 'error', error);
+                document.getElementById('uploadResult').innerHTML = 
+                    '<div class="alert alert-danger">Upload error</div>';
+            }
+        });
+
+        // List images
+        document.getElementById('listImages').addEventListener('click', async function() {
+            const supplierId = document.getElementById('supplierId').value;
+            
+            if (!supplierId) {
+                log('❌ Please enter a supplier ID', 'error');
+                return;
+            }
+            
+            log(`🔍 Listing images for supplier ${supplierId}...`, 'info');
+            
+            try {
+                const response = await fetch(`/supplier/${supplierId}/images`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Found ${data.count} images for supplier ${supplierId}`, 'success', data);
+                    document.getElementById('listResult').innerHTML = 
+                        `<div class="alert alert-success">Found ${data.count} images</div>`;
+                } else {
+                    log(`❌ Failed to list images for supplier ${supplierId}`, 'error', data);
+                    document.getElementById('listResult').innerHTML = 
+                        '<div class="alert alert-danger">Failed to list images</div>';
+                }
+                
+            } catch (error) {
+                log('💥 Error listing images', 'error', error);
+                document.getElementById('listResult').innerHTML = 
+                    '<div class="alert alert-danger">Error listing images</div>';
+            }
+        });
+
+        // Initial load
+        log('🚀 S3 CRUD test page loaded', 'success');
+        log('📱 Open Developer Tools (F12) to see console logs', 'info');
+        
+        // Auto-test S3 connection
+        setTimeout(() => {
+            document.getElementById('testS3').click();
+        }, 1000);
+    </script>
+</body>
+</html>

@@ -1,60 +1,6 @@
 const Supplier = require("../models/supplier.model.js");
-const AWS = require('aws-sdk');
-const crypto = require('crypto');
-
-// S3 configuration via environment variables
-// Required: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_BUCKET
-const s3 = new AWS.S3({
-    apiVersion: '2006-03-01',
-    region: process.env.AWS_REGION || 'us-east-1'
-});
-
-const uploadBufferToS3 = async (buffer, mimeType) => {
-    if (!buffer) return null;
-    const bucket = process.env.S3_BUCKET;
-    if (!bucket) throw new Error('S3_BUCKET env var is required');
-    
-    // Create debug info object to send to browser
-    const debugInfo = {
-        bucket: bucket,
-        region: process.env.AWS_REGION || 'us-east-1',
-        bufferSize: buffer.length,
-        mimeType: mimeType,
-        hasCredentials: !!process.env.AWS_ACCESS_KEY_ID,
-        timestamp: new Date().toISOString()
-    };
-    
-    console.log('S3 Upload Debug Info:', debugInfo);
-    
-    const key = `suppliers/${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-    const params = {
-        Bucket: bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: mimeType,
-        ACL: 'public-read'
-    };
-    
-    try {
-        const out = await s3.upload(params).promise();
-        console.log('S3 upload successful:', out.Location);
-        return { success: true, url: out.Location, debugInfo };
-    } catch (error) {
-        const errorDetails = {
-            code: error.code,
-            message: error.message,
-            statusCode: error.statusCode,
-            requestId: error.requestId,
-            debugInfo: debugInfo
-        };
-        console.error('S3 upload error details:', errorDetails);
-        throw { error: errorDetails };
-    }
-};
-
-
+const { uploadImage, updateImage, deleteImage, listSupplierImages } = require("../utils/s3-utils.js");
 const {body, validationResult} = require("express-validator");
-
 
 exports.create = [
 
@@ -85,8 +31,9 @@ exports.create = [
             (async () => {
                 if (maybeFile) {
                     try {
-                        const uploadResult = await uploadBufferToS3(maybeFile.buffer, maybeFile.mimetype);
+                        const uploadResult = await uploadImage(maybeFile.buffer, maybeFile.mimetype);
                         supplier.photo_url = uploadResult.url;
+                        console.log('Image uploaded successfully:', uploadResult.url);
                     } catch (e) {
                         console.error('S3 upload failed', e);
                         return res.render("500", {message: `Image upload failed. Details: ${JSON.stringify(e.error)}`});
@@ -129,7 +76,6 @@ exports.findOne = (req, res) => {
     });
 };
 
-
 exports.update = [
 
     // Validate and sanitize the name field.
@@ -157,11 +103,18 @@ exports.update = [
             (async () => {
                 if (maybeFile) {
                     try {
-                        const uploadResult = await uploadBufferToS3(maybeFile.buffer, maybeFile.mimetype);
+                        // Use updateImage to replace existing image
+                        const uploadResult = await updateImage(
+                            req.body.photo_url, // old image URL
+                            maybeFile.buffer, 
+                            maybeFile.mimetype,
+                            supplier.id
+                        );
                         supplier.photo_url = uploadResult.url;
+                        console.log('Image updated successfully:', uploadResult.url);
                     } catch (e) {
-                        console.error('S3 upload failed', e);
-                        return res.render("500", {message: `Image upload failed. Details: ${JSON.stringify(e.error)}`});
+                        console.error('S3 image update failed', e);
+                        return res.render("500", {message: `Image update failed. Details: ${JSON.stringify(e.error)}`});
                     }
                 }
                 if (!supplier.photo_url && req.body.photo_url) {
@@ -188,16 +141,54 @@ exports.update = [
 ];
 
 exports.remove = (req, res) => {
-    Supplier.delete(req.params.id, (err, data) => {
+    // First get the supplier to find the image URL
+    Supplier.findById(req.params.id, (err, supplierData) => {
         if (err) {
-            if (err.kind === "not_found") {
-                res.status(404).send({
-                    message: `Not found Student with id ${req.params.id}.`
+            return res.render("500", {message: `Error retrieving student with id ${req.params.id}`});
+        }
+        
+        // Delete image from S3 if it exists
+        if (supplierData && supplierData.photo_url) {
+            (async () => {
+                try {
+                    const { deleteImage, extractKeyFromUrl } = require("../utils/s3-utils.js");
+                    const key = extractKeyFromUrl(supplierData.photo_url);
+                    if (key) {
+                        await deleteImage(key);
+                        console.log('Image deleted from S3:', key);
+                    }
+                } catch (imageError) {
+                    console.error('Failed to delete image from S3:', imageError);
+                    // Continue with supplier deletion even if image deletion fails
+                }
+                
+                // Now delete the supplier from database
+                Supplier.delete(req.params.id, (err, data) => {
+                    if (err) {
+                        if (err.kind === "not_found") {
+                            res.status(404).send({
+                                message: `Not found Student with id ${req.params.id}.`
+                            });
+                        } else {
+                            res.render("500", {message: `Could not delete Student with id ${req.params.id}`});
+                        }
+                    } else res.redirect("/students");
                 });
-            } else {
-                res.render("500", {message: `Could not delete Student with id ${req.body.id}`});
-            }
-        } else res.redirect("/students");
+            })();
+        } else {
+            // No image to delete, just delete supplier
+            Supplier.delete(req.params.id, (err, data) => {
+                if (err) {
+                    if (err.kind === "not_found") {
+                        res.status(404).send({
+                            message: `Not found Student with id ${req.params.id}.`
+                        });
+                    } else {
+                        res.render("500", {message: `Could not delete Student with id ${req.params.id}`});
+                    }
+                } else res.redirect("/students");
+            });
+        }
     });
 };
 
@@ -207,4 +198,16 @@ exports.removeAll = (req, res) => {
             res.render("500", {message: `Some error occurred while removing all students.`});
         else res.send({message: `All students were deleted successfully!`});
     });
+};
+
+// New function: Get all images for a supplier
+exports.getSupplierImages = async (req, res) => {
+    try {
+        const supplierId = req.params.id;
+        const images = await listSupplierImages(supplierId);
+        res.json(images);
+    } catch (error) {
+        console.error('Failed to get supplier images:', error);
+        res.status(500).json({ error: 'Failed to get supplier images' });
+    }
 };
