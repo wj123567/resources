@@ -47,7 +47,7 @@ const uploadImage = async (buffer, mimeType, supplierId = null) => {
     
     // Generate predictable key for updates, random for new uploads
     const key = supplierId 
-        ? `suppliers/${supplierId}-${Date.now()}.jpg`
+        ? `suppliers/${supplierId}.jpg`
         : `suppliers/${Date.now()}-${crypto.randomBytes(8).toString('hex')}.jpg`;
     
     const params = {
